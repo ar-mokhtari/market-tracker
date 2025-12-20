@@ -1,31 +1,13 @@
+version: '3.8'
 services:
   db:
     image: mysql:8.0
-    container_name: market-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - db-data:/var/lib/mysql
-      - ./docker/mysql/market-init.sql:/docker-entrypoint-initdb.d/market-init.sql:ro
+      MYSQL_DATABASE: market_tracker
+      MYSQL_USER: market_user
+      MYSQL_PASSWORD: market_secure_password_2024
+      MYSQL_ROOT_PASSWORD: root
     ports:
-      - "${DB_PORT:-3306}:3306"
-    networks:
-      - backend-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${DB_USER}", "-p${DB_PASSWORD}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    restart: unless-stopped
-
-networks:
-  backend-network:
-    driver: bridge
-
-volumes:
-  db-data:
-    driver: local
+      - "3306:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql

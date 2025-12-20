@@ -1,100 +1,85 @@
-// main.go
 package main
 
 import (
-	"context"
+	"database/sql"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-
 	"github.com/ar-mokhtari/market-tracker/adapter/storage/mysql"
-	"github.com/ar-mokhtari/market-tracker/config/env"
 	v1 "github.com/ar-mokhtari/market-tracker/delivery/http/v1"
-	"github.com/ar-mokhtari/market-tracker/server"
 	"github.com/ar-mokhtari/market-tracker/usecase"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Load environment
-	env.Init()
+	godotenv.Load()
 
-	cfg, err := env.LoadConfig()
+	// استفاده از متغیرهای محیطی با دقت بالا
+	dbUser := os.Getenv("DB_USER") // market_user
+	dbPass := os.Getenv("DB_PASS") // market_secure_password_2024
+	dbHost := os.Getenv("DB_HOST") // localhost یا 127.0.0.1
+	dbPort := os.Getenv("DB_PORT") // 3306
+	dbName := os.Getenv("DB_NAME") // market_tracker
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
+		dbUser, dbPass, dbHost, dbPort, dbName)
+
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatal("خطا در باز کردن دیتابیس: ", err)
 	}
 
-	// Initialize database
-	server.DBInit()
-
-	// Create tables
-	if err := mysql.CreatePricesTable(db); err != nil {
-		log.Fatalf("Failed to create tables: %v", err)
+	// تست واقعی اتصال قبل از شروع
+	err = db.Ping()
+	if err != nil {
+		log.Fatal("دیتابیس در دسترس نیست: ", err)
 	}
 
-	// Initialize repository and use case
+	migration := `
+CREATE TABLE IF NOT EXISTS prices (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    date VARCHAR(20),
+    time VARCHAR(20),
+    symbol VARCHAR(50) NOT NULL,
+    name_fa VARCHAR(100),
+    price VARCHAR(50),
+    unit VARCHAR(20),
+    type VARCHAR(20) NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_symbol_type (symbol, type)
+);`
+
+	_, err = db.Exec(migration)
+	if err != nil {
+		log.Fatal("خطا در ساخت جداول: ", err)
+	}
+
+	apiKey := os.Getenv("API_KEY") // خواندن از .env
 	repo := mysql.NewRepository(db)
-	priceUseCase := usecase.NewUseCase(repo, env.AuthKey)
+	uc := usecase.NewPriceUseCase(repo, apiKey)
 
-	// Fetch initial market data
-	log.Println("Fetching initial market data...")
-	ctx := context.Background()
-	if err := priceUseCase.FetchAndSaveMarketData(ctx); err != nil {
-		log.Printf("Warning: Failed to fetch initial market data: %v", err)
-	} else {
-		log.Println("Initial market data fetched successfully")
-	}
+	h := v1.NewHandler(uc)
 
-	// Start periodic data fetching (every 5 minutes)
-	go startPeriodicFetch(priceUseCase, 5*time.Minute)
+	// شروع دریافت خودکار
+	go func() {
+		for {
+			uc.FetchFromExternal()
+			time.Sleep(5 * time.Minute)
+		}
+	}()
 
-	// Initialize Echo
-	e := echo.New()
+	// مسیرها (Routes)
+	http.HandleFunc("/api/v1/prices", h.ListPrices)
+	http.HandleFunc("/api/v1/prices/fetch", h.ManualFetch)
 
-	// Middleware
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORS())
-
-	// Load API prefix
-	prefix := env.LoadPrefix()
-	apiGroup := e.Group(prefix.APIPrefix + prefix.APIVersion)
-
-	// Register routes
-	handler := v1.NewHandler(priceUseCase)
-	handler.RegisterRoutes(apiGroup)
-
-	// Health check
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(200, map[string]string{
-			"status": "healthy",
-			"time":   time.Now().Format(time.RFC3339),
-		})
-	})
-
-	// Start server
-	port := cfg.Service.Port
+	port := os.Getenv("SERVICE_PORT")
 	if port == "" {
 		port = "8080"
 	}
-	log.Printf("Starting server on port %s", port)
-	if err := e.Start(":" + port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
-}
-
-func startPeriodicFetch(useCase *usecase.UseCase, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		ctx := context.Background()
-		log.Println("Fetching market data...")
-		if err := useCase.FetchAndSaveMarketData(ctx); err != nil {
-			log.Printf("Error fetching market data: %v", err)
-		} else {
-			log.Println("Market data updated successfully")
-		}
-	}
+	fmt.Printf("Server running on port %s...\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
