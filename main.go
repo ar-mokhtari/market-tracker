@@ -12,6 +12,7 @@ import (
 	"github.com/ar-mokhtari/market-tracker/adapter/storage/mysql"
 	"github.com/ar-mokhtari/market-tracker/config/env"
 	v1 "github.com/ar-mokhtari/market-tracker/delivery/http/v1"
+	"github.com/ar-mokhtari/market-tracker/server"
 	"github.com/ar-mokhtari/market-tracker/usecase"
 )
 
@@ -25,17 +26,7 @@ func main() {
 	}
 
 	// Initialize database
-	db, err := mysql.InitDB(
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Name,
-	)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
+	server.DBInit()
 
 	// Create tables
 	if err := mysql.CreatePricesTable(db); err != nil {
