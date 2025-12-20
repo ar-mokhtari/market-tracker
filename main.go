@@ -9,9 +9,10 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/ar-mokhtari/market-trackeradapter/storage/mysql"
-	"github.com/ar-mokhtari/market-trackerconfig/env"
-	v1 "github.com/ar-mokhtari/market-trackerdelivery/http/v1"
+	"github.com/ar-mokhtari/market-tracker/adapter/storage/mysql"
+	"github.com/ar-mokhtari/market-tracker/config/env"
+	v1 "github.com/ar-mokhtari/market-tracker/delivery/http/v1"
+	"github.com/ar-mokhtari/market-tracker/usecase"
 )
 
 func main() {
