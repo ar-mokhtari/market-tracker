@@ -1,3 +1,4 @@
+// Package v1 is about manage routing
 package v1
 
 import "github.com/labstack/echo/v4"
