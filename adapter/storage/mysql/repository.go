@@ -25,7 +25,7 @@ func (r *Repository) Upsert(p entity.Price) error {
 	err := r.db.QueryRow("SELECT price FROM price_history WHERE symbol = ? ORDER BY recorded_at DESC LIMIT 1", p.Symbol).Scan(&lastPrice)
 
 	// If price is identical, skip history insert but update the main prices table
-	if err == nil && lastPrice == p.Price {
+	if err == nil && lastPrice == p.Price.String() {
 		_, err = r.db.Exec("UPDATE prices SET date=?, time=?, updated_at=CURRENT_TIMESTAMP WHERE symbol=?", p.Date, p.Time, p.Symbol)
 		return err
 	}
