@@ -1,3 +1,4 @@
+// Package mysql provides the database implementation of the repository.
 package mysql
 
 import (
@@ -16,41 +17,42 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// Upsert updates the current price and adds to history only if the price has changed.
 func (r *Repository) Upsert(p entity.Price) error {
-	// Start a transaction to ensure both inserts happen or none
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
+	var lastPrice string
+
+	// Check the latest price in history to avoid redundant records
+	err := r.db.QueryRow("SELECT price FROM price_history WHERE symbol = ? ORDER BY recorded_at DESC LIMIT 1", p.Symbol).Scan(&lastPrice)
+
+	// If price is different or it's the first record, proceed
+	if err == sql.ErrNoRows || lastPrice != p.Price {
+		tx, err := r.db.Begin()
+		if err != nil {
+			return fmt.Errorf("transaction start error: %w", err)
+		}
+
+		// 1. Update current prices table
+		upsertQuery := `
+			INSERT INTO prices (date, time, symbol, name_fa, price, unit, type)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON DUPLICATE KEY UPDATE
+			price=VALUES(price), date=VALUES(date), time=VALUES(time), updated_at=CURRENT_TIMESTAMP`
+
+		if _, err := tx.Exec(upsertQuery, p.Date, p.Time, p.Symbol, p.NameFa, p.Price, p.Unit, p.Type); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("upsert prices error: %w", err)
+		}
+
+		// 2. Insert into history
+		if _, err := tx.Exec("INSERT INTO price_history (symbol, price, type) VALUES (?, ?, ?)", p.Symbol, p.Price, p.Type); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("insert history error: %w", err)
+		}
+
+		return tx.Commit()
 	}
 
-	// 1. Update or Insert current price
-	upsertQuery := `
-		INSERT INTO prices (date, time, symbol, name_fa, price, unit, type)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON DUPLICATE KEY UPDATE
-		price=VALUES(price),
-		date=VALUES(date),
-		time=VALUES(time),
-		updated_at=CURRENT_TIMESTAMP`
-
-	_, err = tx.Exec(upsertQuery, p.Date, p.Time, p.Symbol, p.NameFa, p.Price, p.Unit, p.Type)
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("error upserting price: %v", err)
-	}
-
-	// 2. Insert into price_history for timeline tracking
-	historyQuery := `
-		INSERT INTO price_history (symbol, price, type)
-		VALUES (?, ?, ?)`
-
-	_, err = tx.Exec(historyQuery, p.Symbol, p.Price, p.Type)
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("error inserting into history: %v", err)
-	}
-
-	return tx.Commit()
+	return nil
 }
 
 func (r *Repository) List(pType string) ([]entity.Price, error) {
