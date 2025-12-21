@@ -1,9 +1,7 @@
-// Package v1 provides the HTTP handlers for the market tracker.
 package v1
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/ar-mokhtari/market-tracker/usecase"
@@ -13,28 +11,26 @@ type Handler struct {
 	uc *usecase.PriceUseCase
 }
 
-func NewHandler(uc *usecase.PriceUseCase) *Handler {
+func NewPriceHandler(uc *usecase.PriceUseCase) *Handler {
 	return &Handler{uc: uc}
 }
 
-func (h *Handler) ListPrices(w http.ResponseWriter, r *http.Request) {
+// GetPrices maps to /api/v1/prices
+func (h *Handler) GetPrices(w http.ResponseWriter, r *http.Request) {
 	t := r.URL.Query().Get("type")
 	prices, err := h.uc.GetPrices(t)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encErr != nil {
-			log.Printf("Encoding error: %v", encErr)
-		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"data": prices}); err != nil {
-		log.Printf("JSON encoding error: %v", err)
-	}
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": prices})
 }
 
-func (h *Handler) ManualFetch(w http.ResponseWriter, r *http.Request) {
+// FetchPrices maps to /api/v1/prices/fetch
+func (h *Handler) FetchPrices(w http.ResponseWriter, r *http.Request) {
 	err := h.uc.FetchFromExternal()
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
@@ -43,12 +39,10 @@ func (h *Handler) ManualFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = w.Write([]byte(`{"status": "fetching successful"}`))
-	if err != nil {
-		log.Printf("Failed to write response: %v", err)
-	}
+	_, _ = w.Write([]byte(`{"status": "fetching successful"}`))
 }
 
+// GetTimeline maps to /api/v1/prices/timeline
 func (h *Handler) GetTimeline(w http.ResponseWriter, r *http.Request) {
 	symbol := r.URL.Query().Get("symbol")
 	if symbol == "" {
@@ -63,7 +57,11 @@ func (h *Handler) GetTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"timeline": timeline}); err != nil {
-		log.Printf("json encoding error: %v", err)
-	}
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"timeline": timeline})
+}
+
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/prices", h.GetPrices)
+	mux.HandleFunc("/api/v1/prices/fetch", h.FetchPrices)
+	mux.HandleFunc("/api/v1/prices/timeline", h.GetTimeline)
 }

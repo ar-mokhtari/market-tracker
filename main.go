@@ -1,7 +1,7 @@
-// Package main is the entry point of the market-tracker application.
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,42 +9,47 @@ import (
 	"time"
 
 	"github.com/ar-mokhtari/market-tracker/adapter/storage/mysql"
-	"github.com/ar-mokhtari/market-tracker/delivery/http/handler"
+	handler "github.com/ar-mokhtari/market-tracker/delivery/http/v1"
 	"github.com/ar-mokhtari/market-tracker/usecase"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	// 1. Load environment variables
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system env")
-	}
+	// Reverting to the simplest loading method
+	_ = godotenv.Load()
 
 	apiKey := os.Getenv("API_KEY")
-	baseURL := "https://brsapi.ir/Api/Market/Gold_Currency.php"
-	dbDSN := os.Getenv("DB_DSN")
+	baseURL := os.Getenv("API_BASE_URL")
+	// Replace these keys with EXACTLY what you have in your .env
+	dbUser := os.Getenv("DB_USER")
+	dbPass := os.Getenv("DB_PASS")
+	dbName := os.Getenv("DB_NAME")
+	dbHost := os.Getenv("DB_HOST") // e.g., 127.0.0.1:3306
 
-	// 2. Initialize Infrastructure (MySQL)
-	repo, err := mysql.NewRepository(dbDSN)
+	// Constructing DSN manually if you don't have a single DB_DSN
+	dbDSN := fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", dbUser, dbPass, dbHost, dbName)
+
+	// 2. Database Initialization
+	db, err := sql.Open("mysql", dbDSN)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Database unreachable: %v", err)
 	}
 
-	// 3. Initialize UseCase
+	repo := mysql.NewRepository(db)
 	uc := usecase.NewPriceUseCase(repo, apiKey, baseURL)
-
-	// 4. Start Background Worker (Automated Fetching every 10 minutes)
-	go startBackgroundWorker(uc)
-
-	// 5. Initialize Handlers and Routes
 	h := handler.NewPriceHandler(uc)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/prices/fetch", h.FetchPrices)
-	mux.HandleFunc("/api/v1/prices", h.GetPrices)
-	mux.HandleFunc("/api/v1/prices/timeline", h.GetTimeline)
+	go startBackgroundWorker(uc)
 
-	// 6. Start HTTP Server
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
 	port := ":8080"
 	fmt.Printf("2025/12/21 %s 🚀 Server starting on port %s\n", time.Now().Format("15:04:05"), port)
 
@@ -56,16 +61,12 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		log.Fatal(err)
 	}
 }
 
-// startBackgroundWorker runs in a goroutine to fetch data periodically.
 func startBackgroundWorker(uc *usecase.PriceUseCase) {
-	// Execute immediately on startup
-	if err := uc.FetchFromExternal(); err != nil {
-		log.Printf("Initial automation fetch failed: %v", err)
-	}
+	_ = uc.FetchFromExternal()
 
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
@@ -73,9 +74,9 @@ func startBackgroundWorker(uc *usecase.PriceUseCase) {
 	for range ticker.C {
 		fmt.Printf("⏰ %s: Scheduled fetch started...\n", time.Now().Format("15:04:05"))
 		if err := uc.FetchFromExternal(); err != nil {
-			log.Printf("❌ Scheduled fetch failed: %v", err)
+			log.Printf("Worker failed: %v", err)
 		} else {
-			fmt.Println("✅ Scheduled fetch successful")
+			fmt.Println("Worker success")
 		}
 	}
 }

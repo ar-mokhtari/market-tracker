@@ -2,8 +2,6 @@
 package usecase
 
 import (
-	"os"
-
 	"github.com/ar-mokhtari/market-tracker/entity"
 )
 
@@ -13,12 +11,12 @@ type PriceUseCase struct {
 	baseURL string
 }
 
-func NewPriceUseCase(repo Repo, apiKey string) *PriceUseCase {
-	baseUrl := os.Getenv("API_BASE_URL")
-	if baseUrl == "" {
-		baseUrl = "https://BrsApi.ir/Api/Market/Gold_Currency.php"
+func NewPriceUseCase(repo Repo, apiKey string, baseURL string) *PriceUseCase {
+	return &PriceUseCase{
+		repo:    repo,
+		apiKey:  apiKey,
+		baseURL: baseURL,
 	}
-	return &PriceUseCase{repo: repo, apiKey: apiKey, baseURL: baseUrl}
 }
 
 func (uc *PriceUseCase) GetPrices(pType string) ([]entity.Price, error) {
