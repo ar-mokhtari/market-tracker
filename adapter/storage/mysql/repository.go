@@ -2,6 +2,8 @@ package mysql
 
 import (
 	"database/sql"
+	"fmt"
+	"time"
 
 	"github.com/ar-mokhtari/market-tracker/entity"
 )
@@ -15,28 +17,47 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 func (r *Repository) Upsert(p entity.Price) error {
-	query := `INSERT INTO prices (date, time, symbol, name_en, name_fa, price, change_value, change_percent, unit, type)
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			  ON DUPLICATE KEY UPDATE
-			  price=VALUES(price), change_value=VALUES(change_value), change_percent=VALUES(change_percent),
-			  date=VALUES(date), time=VALUES(time), updated_at=CURRENT_TIMESTAMP`
+	// Start a transaction to ensure both inserts happen or none
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
 
-	_, err := r.db.Exec(query, p.Date, p.Time, p.Symbol, p.NameEn, p.NameFa, p.Price, p.ChangeValue, p.ChangePercent, p.Unit, p.Type)
-	return err
+	// 1. Update or Insert current price
+	upsertQuery := `
+		INSERT INTO prices (date, time, symbol, name_fa, price, unit, type)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+		price=VALUES(price),
+		date=VALUES(date),
+		time=VALUES(time),
+		updated_at=CURRENT_TIMESTAMP`
+
+	_, err = tx.Exec(upsertQuery, p.Date, p.Time, p.Symbol, p.NameFa, p.Price, p.Unit, p.Type)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("error upserting price: %v", err)
+	}
+
+	// 2. Insert into price_history for timeline tracking
+	historyQuery := `
+		INSERT INTO price_history (symbol, price, type)
+		VALUES (?, ?, ?)`
+
+	_, err = tx.Exec(historyQuery, p.Symbol, p.Price, p.Type)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("error inserting into history: %v", err)
+	}
+
+	return tx.Commit()
 }
 
 func (r *Repository) List(pType string) ([]entity.Price, error) {
-	query := "SELECT id, symbol, name_fa, price, unit, type, updated_at FROM prices"
-	var rows *sql.Rows
-	var err error
+	query := `SELECT symbol, name_fa, price, unit, type, date, time
+	          FROM prices WHERE type = ?`
 
-	if pType != "" {
-		query += " WHERE type = ?"
-		rows, err = r.db.Query(query, pType)
-	} else {
-		rows, err = r.db.Query(query)
-	}
-
+	rows, err := r.db.Query(query, pType)
 	if err != nil {
 		return nil, err
 	}
@@ -45,25 +66,39 @@ func (r *Repository) List(pType string) ([]entity.Price, error) {
 	var prices []entity.Price
 	for rows.Next() {
 		var p entity.Price
-		rows.Scan(&p.ID, &p.Symbol, &p.NameFa, &p.Price, &p.Unit, &p.Type, &p.UpdatedAt)
+		err := rows.Scan(&p.Symbol, &p.NameFa, &p.Price, &p.Unit, &p.Type, &p.Date, &p.Time)
+		if err != nil {
+			return nil, err
+		}
 		prices = append(prices, p)
 	}
 	return prices, nil
 }
 
-func (r *Repository) Delete(id string) error {
-	_, err := r.db.Exec("DELETE FROM prices WHERE id = ?", id)
-	return err
-}
+func (r *Repository) GetHistory(symbol string, limit int) ([]entity.Price, error) {
+	query := `SELECT symbol, price, recorded_at
+	          FROM price_history
+	          WHERE symbol = ?
+	          ORDER BY recorded_at DESC
+	          LIMIT ?`
 
-func (r *Repository) GetByID(id string) (entity.Price, error) {
-	var p entity.Price
-	query := "SELECT id, symbol, name_fa, price, type FROM prices WHERE id = ?"
-	err := r.db.QueryRow(query, id).Scan(&p.ID, &p.Symbol, &p.NameFa, &p.Price, &p.Type)
-	return p, err
-}
+	rows, err := r.db.Query(query, symbol, limit)
+	if err != nil {
+		return nil, fmt.Errorf("repository history query error: %w", err)
+	}
+	defer rows.Close()
 
-func (r *Repository) UpdatePrice(id string, newPrice string) error {
-	_, err := r.db.Exec("UPDATE prices SET price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", newPrice, id)
-	return err
+	var history []entity.Price
+	for rows.Next() {
+		var p entity.Price
+		// Mapping recorded_at to Date for simplicity in this DTO
+		var recordedAt time.Time
+		if err := rows.Scan(&p.Symbol, &p.Price, &recordedAt); err != nil {
+			return nil, fmt.Errorf("repository scan error: %w", err)
+		}
+		p.Date = recordedAt.Format("2006-01-02")
+		p.Time = recordedAt.Format("15:04:05")
+		history = append(history, p)
+	}
+	return history, nil
 }
