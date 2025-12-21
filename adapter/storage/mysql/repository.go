@@ -17,42 +17,32 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// Upsert updates the current price and adds to history only if the price has changed.
+// Upsert ensures data is only added to history if the price has changed.
 func (r *Repository) Upsert(p entity.Price) error {
 	var lastPrice string
 
-	// Check the latest price in history to avoid redundant records
+	// Query the most recent price for this specific symbol
 	err := r.db.QueryRow("SELECT price FROM price_history WHERE symbol = ? ORDER BY recorded_at DESC LIMIT 1", p.Symbol).Scan(&lastPrice)
 
-	// If price is different or it's the first record, proceed
-	if err == sql.ErrNoRows || lastPrice != p.Price {
-		tx, err := r.db.Begin()
-		if err != nil {
-			return fmt.Errorf("transaction start error: %w", err)
-		}
-
-		// 1. Update current prices table
-		upsertQuery := `
-			INSERT INTO prices (date, time, symbol, name_fa, price, unit, type)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON DUPLICATE KEY UPDATE
-			price=VALUES(price), date=VALUES(date), time=VALUES(time), updated_at=CURRENT_TIMESTAMP`
-
-		if _, err := tx.Exec(upsertQuery, p.Date, p.Time, p.Symbol, p.NameFa, p.Price, p.Unit, p.Type); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("upsert prices error: %w", err)
-		}
-
-		// 2. Insert into history
-		if _, err := tx.Exec("INSERT INTO price_history (symbol, price, type) VALUES (?, ?, ?)", p.Symbol, p.Price, p.Type); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("insert history error: %w", err)
-		}
-
-		return tx.Commit()
+	// If price is identical, skip history insert but update the main prices table
+	if err == nil && lastPrice == p.Price {
+		_, err = r.db.Exec("UPDATE prices SET date=?, time=?, updated_at=CURRENT_TIMESTAMP WHERE symbol=?", p.Date, p.Time, p.Symbol)
+		return err
 	}
 
-	return nil
+	// Otherwise, record the change in both tables
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	_, _ = tx.Exec(`INSERT INTO prices (symbol, name_fa, price, unit, type, date, time)
+		VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE price=VALUES(price), date=VALUES(date), time=VALUES(time)`,
+		p.Symbol, p.NameFa, p.Price, p.Unit, p.Type, p.Date, p.Time)
+
+	_, _ = tx.Exec("INSERT INTO price_history (symbol, price, type) VALUES (?, ?, ?)", p.Symbol, p.Price, p.Type)
+
+	return tx.Commit()
 }
 
 func (r *Repository) List(pType string) ([]entity.Price, error) {
