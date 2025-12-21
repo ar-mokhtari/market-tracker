@@ -1,3 +1,5 @@
+// Package v1 main provides the entry point for the market-tracker service,
+// handling dependency injection, database connection, and background workers.
 package v1
 
 import (
