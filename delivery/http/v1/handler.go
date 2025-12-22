@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/ar-mokhtari/market-tracker/dto"
 	"github.com/ar-mokhtari/market-tracker/usecase"
 )
 
@@ -16,86 +17,119 @@ func NewPriceHandler(uc *usecase.PriceUseCase) *Handler {
 	return &Handler{uc: uc}
 }
 
+// sendError is a helper to return JSON error responses consistently.
+func (h *Handler) sendError(w http.ResponseWriter, message string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": message}); err != nil {
+		http.Error(w, message, code)
+	}
+}
+
 // GetPrices maps to /api/v1/prices
-// It returns a list of the most recent prices, optionally filtered by the 'type' query parameter.
+// It returns a list of the most recent prices converted to DTOs.
 func (h *Handler) GetPrices(w http.ResponseWriter, r *http.Request) {
 	t := r.URL.Query().Get("type")
 	prices, err := h.uc.GetPrices(t)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encErr != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
+		h.sendError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	response := make([]dto.PriceResponse, 0, len(prices))
+	for _, p := range prices {
+		actualPrice, _ := p.Price.Float64()
+		response = append(response, dto.PriceResponse{
+			Date:   p.Date,
+			Time:   p.Time,
+			Symbol: p.Symbol,
+			Price:  actualPrice,
+			Type:   p.Type,
+			Unit:   p.Unit,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"data": prices}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"data": response}); err != nil {
 		return
 	}
 }
 
 // FetchPrices maps to /api/v1/prices/fetch
-// It triggers an external API call to fetch current market prices and store them in the database.
+// It triggers an external API call and returns a success status.
 func (h *Handler) FetchPrices(w http.ResponseWriter, r *http.Request) {
 	err := h.uc.FetchFromExternal()
-	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encErr != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
+		h.sendError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	if _, err := w.Write([]byte(`{"status": "fetching successful"}`)); err != nil {
 		return
 	}
 }
 
 // GetTimeline maps to /api/v1/prices/timeline
-// It provides a historical timeline of prices for a specific symbol required in query parameters.
+// It provides a historical timeline of prices mapped to DTOs for a specific symbol.
 func (h *Handler) GetTimeline(w http.ResponseWriter, r *http.Request) {
 	symbol := r.URL.Query().Get("symbol")
 	if symbol == "" {
-		http.Error(w, "symbol is required", http.StatusBadRequest)
+		h.sendError(w, "symbol is required", http.StatusBadRequest)
 		return
 	}
 
 	timeline, err := h.uc.GetSymbolTimeline(symbol)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encErr != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
+		h.sendError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	response := make([]dto.PriceResponse, 0, len(timeline))
+	for _, p := range timeline {
+		actualPrice, _ := p.Price.Float64()
+		response = append(response, dto.PriceResponse{
+			Date:   p.Date,
+			Time:   p.Time,
+			Symbol: p.Symbol,
+			Price:  actualPrice,
+			Type:   p.Type,
+			Unit:   p.Unit,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"timeline": timeline}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"timeline": response}); err != nil {
 		return
 	}
 }
 
 // ListAllPrices maps to /api/v1/prices/all
-// It retrieves all price records from the database with an optional filter by type.
+// It retrieves all price records and maps them to DTOs for the response.
 func (h *Handler) ListAllPrices(w http.ResponseWriter, r *http.Request) {
 	priceType := r.URL.Query().Get("type")
 
 	prices, err := h.uc.ListPrices(r.Context(), priceType)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encErr != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
+		h.sendError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	response := make([]dto.PriceResponse, 0, len(prices))
+	for _, p := range prices {
+		actualPrice, _ := p.Price.Float64()
+		response = append(response, dto.PriceResponse{
+			Date:   p.Date,
+			Time:   p.Time,
+			Symbol: p.Symbol,
+			Price:  actualPrice,
+			Type:   p.Type,
+			Unit:   p.Unit,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"data": prices}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"data": response}); err != nil {
 		return
 	}
 }
