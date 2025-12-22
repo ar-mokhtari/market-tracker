@@ -2,6 +2,7 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -93,4 +94,39 @@ func (r *Repository) GetHistory(symbol string, limit int) ([]entity.Price, error
 		history = append(history, p)
 	}
 	return history, nil
+}
+
+func (r *Repository) GetAllPrices(ctx context.Context, priceType string) ([]entity.Price, error) {
+	var prices []entity.Price
+	var query string
+	var args []interface{}
+
+	if priceType != "" {
+		query = "SELECT date, time, symbol, price, type FROM prices WHERE type = ? ORDER BY created_at DESC"
+		args = append(args, priceType)
+	} else {
+		query = "SELECT date, time, symbol, price, type FROM prices ORDER BY created_at DESC"
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p entity.Price
+		// Make sure these fields match your entity.Price struct fields
+		err := rows.Scan(&p.Date, &p.Time, &p.Symbol, &p.Price, &p.Type)
+		if err != nil {
+			return nil, err
+		}
+		prices = append(prices, p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return prices, nil
 }

@@ -2,7 +2,7 @@ include .env
 
 start: db-up run
 
-db-up:
+d-u:
 	docker compose up -d
 
 run:
@@ -19,3 +19,6 @@ gold:
 
 currency:
 	curl -X GET http://localhost:8080/api/v1/prices?type=currency
+
+all:
+	curl -X GET http://localhost:8080/api/v1/prices/all
