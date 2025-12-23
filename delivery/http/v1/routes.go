@@ -10,4 +10,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Add WebSocket endpoint
 	mux.HandleFunc("/ws", h.hub.ServeWS)
+
+	// Docker health check endpoint
+	mux.HandleFunc("/health", h.HealthCheck) // Docker health check endpoint
 }

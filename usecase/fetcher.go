@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/ar-mokhtari/market-tracker/entity"
 )
@@ -19,22 +18,16 @@ func (uc *PriceUseCase) FetchFromExternal() error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set browser headers to avoid 'connection reset'
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	// Browser-like headers
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{
-		Timeout: 20 * time.Second, // Increased timeout for slower network responses
-	}
-
-	resp, err := client.Do(req)
+	// Optimized: Using the shared httpClient
+	resp, err := uc.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("api execution failed (network level): %w", err)
+		return fmt.Errorf("network level error: %w", err)
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("api returned status: %d", resp.StatusCode)
@@ -45,14 +38,12 @@ func (uc *PriceUseCase) FetchFromExternal() error {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode api response: %w", err)
+		return fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	for _, p := range result.Gold {
 		p.Type = "gold"
-		if err := uc.repo.Upsert(p); err != nil {
-			fmt.Printf("Error during upsert for %s: %v\n", p.Symbol, err)
-		}
+		_ = uc.repo.Upsert(p)
 	}
 
 	return nil

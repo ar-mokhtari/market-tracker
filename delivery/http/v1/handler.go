@@ -137,3 +137,18 @@ func (h *Handler) ListAllPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	h.respond(w, http.StatusOK, map[string]string{"status": "healthy"})
+}
+
+func (h *Handler) respond(w http.ResponseWriter, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	if payload != nil {
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			// If encoding fails, fallback to basic error
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+	}
+}

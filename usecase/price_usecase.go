@@ -3,14 +3,17 @@ package usecase
 
 import (
 	"context"
+	"net/http"
+	"time"
 
 	"github.com/ar-mokhtari/market-tracker/entity"
 )
 
 type PriceUseCase struct {
-	repo    Repo
-	apiKey  string
-	baseURL string
+	repo       Repo
+	apiKey     string
+	baseURL    string
+	httpClient *http.Client
 }
 
 func NewPriceUseCase(repo Repo, apiKey string, baseURL string) *PriceUseCase {
@@ -18,6 +21,9 @@ func NewPriceUseCase(repo Repo, apiKey string, baseURL string) *PriceUseCase {
 		repo:    repo,
 		apiKey:  apiKey,
 		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 20 * time.Second,
+		},
 	}
 }
 
@@ -30,6 +36,6 @@ func (uc *PriceUseCase) GetSymbolTimeline(symbol string) ([]entity.Price, error)
 	return uc.repo.GetHistory(symbol, defaultLimit)
 }
 
-func (u *PriceUseCase) ListPrices(ctx context.Context, priceType string) ([]entity.Price, error) {
-	return u.repo.GetAllPrices(ctx, priceType)
+func (uc *PriceUseCase) ListPrices(ctx context.Context, priceType string) ([]entity.Price, error) {
+	return uc.repo.GetAllPrices(ctx, priceType)
 }
