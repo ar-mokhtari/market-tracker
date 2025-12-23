@@ -10,11 +10,15 @@ import (
 )
 
 type Handler struct {
-	uc *usecase.PriceUseCase
+	uc  *usecase.PriceUseCase
+	hub *Hub // Add this
 }
 
-func NewPriceHandler(uc *usecase.PriceUseCase) *Handler {
-	return &Handler{uc: uc}
+func NewPriceHandler(uc *usecase.PriceUseCase, h *Hub) *Handler {
+	return &Handler{
+		uc:  uc,
+		hub: h,
+	}
 }
 
 // sendError is a helper to return JSON error responses consistently.

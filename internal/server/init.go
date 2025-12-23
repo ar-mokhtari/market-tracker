@@ -36,6 +36,6 @@ func DBInit() *sql.DB {
 }
 
 // HandlerInit creates a new HTTP handler instance.
-func HandlerInit(uc *usecase.PriceUseCase) *v1.Handler {
-	return v1.NewPriceHandler(uc)
+func HandlerInit(uc *usecase.PriceUseCase, hub *v1.Hub) *v1.Handler {
+	return v1.NewPriceHandler(uc, hub)
 }

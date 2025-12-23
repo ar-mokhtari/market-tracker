@@ -8,6 +8,7 @@ import (
 	db "github.com/ar-mokhtari/market-tracker/adapter/storage"
 	config "github.com/ar-mokhtari/market-tracker/config"
 	delivery "github.com/ar-mokhtari/market-tracker/delivery/http"
+	v1 "github.com/ar-mokhtari/market-tracker/delivery/http/v1"
 	"github.com/rs/cors"
 )
 
@@ -20,7 +21,13 @@ func main() {
 	defer database.Close()
 
 	// 3. Initialize Delivery
-	mux := delivery.Init(database, cfg)
+	// Then pass this hub to your delivery layer
+	// Note: You need to update your delivery.Init to accept the hub
+
+	// Inside main() after initializing database and before delivery.Init
+	hub := v1.NewHub()
+	go hub.Run()
+	mux := delivery.Init(database, cfg, hub)
 
 	// 4. CORS Setup
 	c := cors.New(cors.Options{
