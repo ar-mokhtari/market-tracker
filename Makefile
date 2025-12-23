@@ -2,7 +2,7 @@ include .env
 
 start: db-up run
 
-d-u:
+du:
 	docker compose up -d
 
 run:

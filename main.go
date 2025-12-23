@@ -1,5 +1,3 @@
-// Package main provides the entry point for the market-tracker service,
-// managing the initialization of config, database, and delivery layers.
 package main
 
 import (
@@ -10,6 +8,7 @@ import (
 	db "github.com/ar-mokhtari/market-tracker/adapter/storage"
 	config "github.com/ar-mokhtari/market-tracker/config"
 	delivery "github.com/ar-mokhtari/market-tracker/delivery/http"
+	"github.com/rs/cors" // ۱. اضافه کردن پکیج
 )
 
 func main() {
@@ -20,13 +19,22 @@ func main() {
 	database := db.Init(cfg.DBDSN)
 	defer database.Close()
 
-	// 3. Initialize Delivery (Handlers, Usecases, and Background Workers)
+	// 3. Initialize Delivery
 	mux := delivery.Init(database, cfg)
 
-	// 4. Start Server with Dynamic Port
+	// ۲. اعمال تنظیمات CORS روی mux خروجی از delivery
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000"}, // آدرس فرانت‌اِند علیرضا
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowCredentials: true,
+	})
+	handler := c.Handler(mux)
+
+	// 4. Start Server with CORS Handler
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      mux,
+		Handler:      handler, // ۳. استفاده از handler به جای mux
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 	}
