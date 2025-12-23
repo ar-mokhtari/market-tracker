@@ -8,7 +8,7 @@ import (
 	db "github.com/ar-mokhtari/market-tracker/adapter/storage"
 	config "github.com/ar-mokhtari/market-tracker/config"
 	delivery "github.com/ar-mokhtari/market-tracker/delivery/http"
-	"github.com/rs/cors" // ۱. اضافه کردن پکیج
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -22,19 +22,21 @@ func main() {
 	// 3. Initialize Delivery
 	mux := delivery.Init(database, cfg)
 
-	// ۲. اعمال تنظیمات CORS روی mux خروجی از delivery
+	// 4. CORS Setup
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000"}, // آدرس فرانت‌اِند علیرضا
+		AllowedOrigins:   []string{"http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
 	})
+
+	// Wrap mux with CORS handler
 	handler := c.Handler(mux)
 
-	// 4. Start Server with CORS Handler
+	// 5. Start Server with Handler
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      handler, // ۳. استفاده از handler به جای mux
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 	}
