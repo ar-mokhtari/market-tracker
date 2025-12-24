@@ -1,5 +1,21 @@
-version: '3.8'
 services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_USER=market_user
+      - DB_PASS=market_secure_password_2024
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_NAME=market_tracker
+      - PORT=8080
+      - FETCH_INTERVAL_MINUTES=10
+    depends_on:
+      - db
+    networks:
+      - market-network
+
   db:
     image: mysql:8.0
     environment:
@@ -10,4 +26,10 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/mysql/market-init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - market-network
+
+networks:
+  market-network:
+    driver: bridge

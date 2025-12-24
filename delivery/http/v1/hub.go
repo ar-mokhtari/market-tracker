@@ -12,7 +12,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allowing connection from your React app
+		return true
 	},
 }
 
@@ -40,7 +40,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Println("New WebSocket client connected")
+			log.Println("client registered")
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -49,19 +49,26 @@ func (h *Hub) Run() {
 				client.Close()
 			}
 			h.mu.Unlock()
-			log.Println("WebSocket client disconnected")
+			log.Println("client unregistered")
 
 		case message := <-h.broadcast:
 			h.mu.Lock()
-			for client := range h.clients {
-				err := client.WriteJSON(message)
-				if err != nil {
-					log.Printf("error: %v", err)
-					client.Close()
-					delete(h.clients, client)
-				}
+			activeClients := make([]*websocket.Conn, 0, len(h.clients))
+			for c := range h.clients {
+				activeClients = append(activeClients, c)
 			}
 			h.mu.Unlock()
+
+			for _, client := range activeClients {
+				err := client.WriteJSON(message)
+				if err != nil {
+					log.Printf("websocket write error: %v", err)
+					client.Close()
+					h.mu.Lock()
+					delete(h.clients, client)
+					h.mu.Unlock()
+				}
+			}
 		}
 	}
 }
@@ -69,13 +76,12 @@ func (h *Hub) Run() {
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("failed to upgrade connection: %v", err)
+		log.Printf("upgrade failed: %v", err)
 		return
 	}
 	h.register <- conn
 }
 
-// BroadcastUpdate can be called from your workers or usecases
 func (h *Hub) BroadcastUpdate(data interface{}) {
 	h.broadcast <- data
 }

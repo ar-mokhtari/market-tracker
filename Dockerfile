@@ -1,38 +1,22 @@
-FROM golang:1.21-alpine AS builder
+# Change from 1.21 to 1.23
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
+# The rest of your build steps...
 RUN apk add --no-cache git
-
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+RUN go build -o main .
 
-ARG APP_PORT=8080
-ENV APP_PORT=${APP_PORT}
-
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o main .
-
+# Final stage
 FROM alpine:latest
-
 WORKDIR /app
-
-RUN apk --no-cache add ca-certificates tzdata
-
 COPY --from=builder /app/main .
+# Copy config if needed
+# COPY --from=builder /app/config ./config
 
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser && \
-    chown -R appuser:appuser /app
-
-USER appuser
-
-ARG APP_PORT=8080
-ENV APP_PORT=${APP_PORT}
-EXPOSE ${APP_PORT}
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:${APP_PORT}/health || exit 1
-
+EXPOSE 8080
 CMD ["./main"]
