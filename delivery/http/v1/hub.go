@@ -40,35 +40,31 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Println("client registered")
+			log.Println("New client registered")
 
 		case client := <-h.unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				client.Close()
+				log.Println("Client unregistered and connection closed")
 			}
 			h.mu.Unlock()
-			log.Println("client unregistered")
 
 		case message := <-h.broadcast:
+			// Anti-constipation: مدیریت بهینه ارسال پیام
 			h.mu.Lock()
-			activeClients := make([]*websocket.Conn, 0, len(h.clients))
-			for c := range h.clients {
-				activeClients = append(activeClients, c)
-			}
-			h.mu.Unlock()
-
-			for _, client := range activeClients {
+			for client := range h.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
-					log.Printf("websocket write error: %v", err)
-					client.Close()
-					h.mu.Lock()
-					delete(h.clients, client)
-					h.mu.Unlock()
+					log.Printf("Websocket write error (broken pipe): %v", err)
+					// Muscle Building: حذف کلاینت خراب بدون معطل کردن حلقه اصلی
+					go func(c *websocket.Conn) {
+						h.unregister <- c
+					}(client)
 				}
 			}
+			h.mu.Unlock()
 		}
 	}
 }
@@ -76,12 +72,17 @@ func (h *Hub) Run() {
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("upgrade failed: %v", err)
+		log.Printf("Upgrade failed: %v", err)
 		return
 	}
 	h.register <- conn
 }
 
 func (h *Hub) BroadcastUpdate(data interface{}) {
-	h.broadcast <- data
+	// استفاده از select برای جلوگیری از مسدود شدن در صورت پر بودن کانال
+	select {
+	case h.broadcast <- data:
+	default:
+		log.Println("Broadcast channel is full, skipping update")
+	}
 }
