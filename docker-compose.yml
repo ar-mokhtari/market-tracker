@@ -27,10 +27,10 @@ services:
     image: mysql:8.0
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 2s
-      timeout: 1s
+      interval: 5s
+      timeout: 5s
       retries: 10
-      start_period: 5s
+      start_period: 10s
     environment:
       MYSQL_DATABASE: market_tracker
       MYSQL_USER: market_user

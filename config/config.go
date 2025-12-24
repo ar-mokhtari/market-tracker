@@ -57,7 +57,7 @@ func Init() *Config {
 		log.Fatal("Critical: DB_DSN is not set in environment")
 	}
 
-	cfg.FetchInterval = getEnvAsInt("FETCH_INTERVAL_MINUTES", 10)
+	cfg.FetchInterval = getEnvAsInt("FETCH_INTERVAL", 1)
 
 	return cfg
 }

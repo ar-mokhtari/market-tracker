@@ -3,6 +3,7 @@ package delivery
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"time"
 
@@ -13,68 +14,42 @@ import (
 	"github.com/ar-mokhtari/market-tracker/usecase"
 )
 
-// func Init(db *sql.DB, cfg *config.Config, hub *v1.Hub) *http.ServeMux {
-// 	repo := mysql.NewRepository(db)
-// 	uc := usecase.NewPriceUseCase(repo, cfg.APIKey, cfg.BaseURL)
-// 	interval := time.Duration(cfg.FetchInterval) * time.Minute
-// 	ticker := time.NewTicker(interval)
-
-// 	// Inside the background worker in delivery.Init:
-// 	go func() {
-// 		// Fetch and Broadcast
-// 		if err := uc.FetchFromExternal(); err == nil {
-// 			prices, _ := uc.GetPrices("")
-// 			hub.BroadcastUpdate(prices)
-// 		}
-
-// 		// 2. Inside delivery.Init -> Ticker Loop
-// 		for range ticker.C {
-// 			if err := uc.FetchFromExternal(); err == nil {
-// 				prices, _ := uc.GetPrices("")
-// 				hub.BroadcastUpdate(map[string]interface{}{"data": prices})
-// 			}
-// 		}
-// 	}()
-
-// 	// Single managed worker
-// 	go func() {
-// 		// Initial fetch
-// 		_ = uc.FetchFromExternal()
-
-// 		for range ticker.C {
-// 			_ = uc.FetchFromExternal()
-// 		}
-// 	}()
-
-// 	h := handler.NewPriceHandler(uc, hub)
-// 	mux := http.NewServeMux()
-// 	h.RegisterRoutes(mux)
-
-// 	return mux
-// }
-
-// delivery/init.go
-
 func Init(db *sql.DB, cfg *config.Config, hub *v1.Hub) *http.ServeMux {
 	repo := mysql.NewRepository(db)
 	uc := usecase.NewPriceUseCase(repo, cfg.APIKey, cfg.BaseURL)
 
-	// تنظیم Callback برای برادکست خودکار در لحظه دریافت دیتا
+	// Setup Callback
 	uc.OnUpdate = func(prices []entity.Price) {
 		hub.BroadcastUpdate(map[string]interface{}{"data": prices})
 	}
 
-	// Single Managed Worker - فقط همین یک بخش کافی است
+	// Single Optimized Worker
 	go func() {
-		interval := time.Duration(cfg.FetchInterval) * time.Minute
+		// Ensure interval is at least 1 minute if config fails
+		intervalMin := cfg.FetchInterval
+		if intervalMin <= 0 {
+			intervalMin = 1
+		}
+
+		interval := time.Duration(intervalMin) * time.Minute
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		// اولین Fetch بلافاصله بعد از بالا آمدن
-		_ = uc.FetchFromExternal()
+		log.Printf("Worker started. Interval: %v", interval)
 
-		for range ticker.C {
-			_ = uc.FetchFromExternal()
+		// First execution
+		if err := uc.FetchFromExternal(); err != nil {
+			log.Printf("Initial fetch error: %v", err)
+		}
+
+		for {
+			select {
+			case t := <-ticker.C:
+				log.Printf("Ticker fired at %v. Fetching data...", t.Format("15:04:05"))
+				if err := uc.FetchFromExternal(); err != nil {
+					log.Printf("Scheduled fetch error: %v", err)
+				}
+			}
 		}
 	}()
 
