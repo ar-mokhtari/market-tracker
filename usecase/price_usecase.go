@@ -14,6 +14,7 @@ type PriceUseCase struct {
 	apiKey     string
 	baseURL    string
 	httpClient *http.Client
+	OnUpdate   func([]entity.Price)
 }
 
 func NewPriceUseCase(repo Repo, apiKey string, baseURL string) *PriceUseCase {

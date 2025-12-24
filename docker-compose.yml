@@ -3,21 +3,34 @@ services:
     build: .
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
-      - DB_USER=market_user
-      - DB_PASS=market_secure_password_2024
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
       - DB_HOST=db
-      - DB_PORT=3306
-      - DB_NAME=market_tracker
-      - PORT=8080
-      - FETCH_INTERVAL_MINUTES=10
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - PORT=${SERVICE_PORT}
+      - API_KEY=${API_KEY}
+      - API_BASE_URL=${API_BASE_URL}
+      - FETCH_INTERVAL=${FETCH_INTERVAL}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - market-network
+    volumes:
+      - ./.env:/app/.env
 
   db:
     image: mysql:8.0
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 2s
+      timeout: 1s
+      retries: 10
+      start_period: 5s
     environment:
       MYSQL_DATABASE: market_tracker
       MYSQL_USER: market_user
@@ -25,6 +38,8 @@ services:
       MYSQL_ROOT_PASSWORD: root
     ports:
       - "3306:3306"
+    env_file:
+      - .env
     volumes:
       - ./docker/mysql/market-init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
