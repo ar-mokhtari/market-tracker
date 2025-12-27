@@ -8,19 +8,20 @@ import (
 
 // StartAutomation starts the background worker for periodic price fetching.
 func (uc *PriceUseCase) StartAutomation() {
-	interval := uc.FetchInterval
-	// Immediate first fetch
-	if err := uc.fetchFromExternal(); err != nil {
-		fmt.Printf("Initial automation fetch failed: %v\n", err)
+	// Define a helper to avoid code duplication
+	runFetch := func() {
+		if err := uc.fetchFromExternal(); err != nil {
+			fmt.Printf("Fetch error: %v\n", err)
+		}
 	}
 
-	ticker := time.NewTicker(time.Duration(interval) * time.Minute)
+	// Run immediately on startup
+	runFetch()
+
+	ticker := time.NewTicker(time.Duration(uc.FetchInterval) * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		fmt.Printf("Executing scheduled fetch at: %v\n", time.Now().Format("15:04:05"))
-		if err := uc.fetchFromExternal(); err != nil {
-			fmt.Printf("Automated fetch error: %v\n", err)
-		}
+		runFetch()
 	}
 }

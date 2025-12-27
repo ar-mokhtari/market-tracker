@@ -53,13 +53,14 @@ func (h *Hub) Run() {
 
 		case message := <-h.broadcast:
 			h.mu.Lock()
+			// We iterate through clients and send messages
 			for client := range h.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
-					log.Printf("Websocket write error (broken pipe): %v", err)
-					go func(c *websocket.Conn) {
-						h.unregister <- c
-					}(client)
+					log.Printf("Websocket write error: %v", err)
+					// Close and delete immediately instead of using a goroutine
+					client.Close()
+					delete(h.clients, client)
 				}
 			}
 			h.mu.Unlock()
