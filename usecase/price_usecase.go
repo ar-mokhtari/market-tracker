@@ -10,18 +10,20 @@ import (
 )
 
 type PriceUseCase struct {
-	repo       Repo
-	apiKey     string
-	baseURL    string
-	httpClient *http.Client
-	OnUpdate   func([]entity.Price)
+	repo          Repo
+	apiKey        string
+	baseURL       string
+	httpClient    *http.Client
+	OnUpdate      func([]entity.Price)
+	FetchInterval int
 }
 
-func NewPriceUseCase(repo Repo, apiKey string, baseURL string) *PriceUseCase {
+func NewPriceUseCase(repo Repo, apiKey string, baseURL string, interval int) *PriceUseCase {
 	return &PriceUseCase{
-		repo:    repo,
-		apiKey:  apiKey,
-		baseURL: baseURL,
+		repo:          repo,
+		apiKey:        apiKey,
+		baseURL:       baseURL,
+		FetchInterval: interval,
 		httpClient: &http.Client{
 			Timeout: 20 * time.Second,
 		},

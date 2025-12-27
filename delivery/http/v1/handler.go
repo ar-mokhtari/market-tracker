@@ -60,18 +60,23 @@ func (h *Handler) GetPrices(w http.ResponseWriter, r *http.Request) {
 }
 
 // FetchPrices maps to /api/v1/prices/fetch
-// It triggers an external API call and returns a success status.
+// Triggering manual fetch is now deprecated to protect system resources.
+// It will now just return the latest data from the database.
 func (h *Handler) FetchPrices(w http.ResponseWriter, r *http.Request) {
-	err := h.uc.FetchFromExternal()
+	// Instead of uc.FetchFromExternal(), we just get latest prices from DB
+	// This prevents API rate limiting and high CPU usage.
+	prices, err := h.uc.GetPrices("")
 	if err != nil {
 		h.sendError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if _, err := w.Write([]byte(`{"status": "fetching successful"}`)); err != nil {
-		return
-	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Data retrieved from local storage",
+		"data":    prices,
+	})
 }
 
 // GetTimeline maps to /api/v1/prices/timeline

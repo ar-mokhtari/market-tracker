@@ -9,7 +9,7 @@ import (
 	"github.com/ar-mokhtari/market-tracker/entity"
 )
 
-func (uc *PriceUseCase) FetchFromExternal() error {
+func (uc *PriceUseCase) fetchFromExternal() error {
 	fullURL := fmt.Sprintf("%s?key=%s", uc.baseURL, uc.apiKey)
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
