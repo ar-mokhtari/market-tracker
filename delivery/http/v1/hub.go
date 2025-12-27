@@ -52,13 +52,11 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 
 		case message := <-h.broadcast:
-			// Anti-constipation: مدیریت بهینه ارسال پیام
 			h.mu.Lock()
 			for client := range h.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
 					log.Printf("Websocket write error (broken pipe): %v", err)
-					// Muscle Building: حذف کلاینت خراب بدون معطل کردن حلقه اصلی
 					go func(c *websocket.Conn) {
 						h.unregister <- c
 					}(client)
@@ -79,7 +77,6 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) BroadcastUpdate(data interface{}) {
-	// استفاده از select برای جلوگیری از مسدود شدن در صورت پر بودن کانال
 	select {
 	case h.broadcast <- data:
 	default:
